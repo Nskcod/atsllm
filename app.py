@@ -5,50 +5,74 @@ import PyPDF2 as pdf
 from dotenv import load_dotenv
 import json
 
-load_dotenv() ## load all our environment variables
+load_dotenv()  # Load all environment variables
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def get_gemini_repsonse(input):
-    model=genai.GenerativeModel('gemini-pro')
-    response=model.generate_content(input)
+def get_gemini_response(input):
+    model = genai.GenerativeModel('gemini-pro')
+    response = model.generate_content(input)
     return response.text
 
 def input_pdf_text(uploaded_file):
-    reader=pdf.PdfReader(uploaded_file)
-    text=""
+    reader = pdf.PdfReader(uploaded_file)
+    text = ""
     for page in range(len(reader.pages)):
-        page=reader.pages[page]
-        text+=str(page.extract_text())
+        page = reader.pages[page]
+        text += str(page.extract_text())
     return text
 
-#Prompt Template
+# Prompt Template
+input_prompt = """
+Hey, act like a skilled or very experienced ATS (Application Tracking System) with a deep understanding of the tech field, software engineering, data science, data analytics, and big data engineering. Your task is to evaluate the resume based on the given job description. You must consider that the job market is highly competitive, and you should provide the best assistance for improving resumes. Assign the percentage match based on the job description and identify the missing keywords with high accuracy.
 
-input_prompt="""
-Hey Act Like a skilled or very experience ATS(Application Tracking System)
-with a deep understanding of tech field,software engineering,data science ,data analyst
-and big data engineer. Your task is to evaluate the resume based on the given job description.
-You must consider the job market is very competitive and you should provide 
-best assistance for improving thr resumes. Assign the percentage Matching based 
-on Jd and
-the missing keywords with high accuracy
 resume:{text}
 description:{jd}
 
-I want the response in one single string having the structure
-{{"JD Match":"%","MissingKeywords:[]","Profile Summary":""}}
+I want the response in one single string in the structure:
+{{"JD Match":"%","MissingKeywords":[],"Profile Summary":""}}
 """
 
-## streamlit app
+# Streamlit App
 st.title("Smart ATS")
-st.text("Improve Your Resume ATS")
-jd=st.text_area("Paste the Job Description")
-uploaded_file=st.file_uploader("Upload Your Resume",type="pdf",help="Please uplaod the pdf")
+st.subheader("Improve Your Resume's ATS Score")
+st.text("Boost your chances by improving your resume to match job descriptions!")
+
+jd = st.text_area("Paste the Job Description", height=200)
+uploaded_file = st.file_uploader("Upload Your Resume (PDF)", type="pdf", help="Please upload your resume as a PDF file.")
 
 submit = st.button("Submit")
 
 if submit:
     if uploaded_file is not None:
-        text=input_pdf_text(uploaded_file)
-        response=get_gemini_repsonse(input_prompt)
-        st.subheader(response)
+        # Extract text from the uploaded resume
+        text = input_pdf_text(uploaded_file)
+        
+        # Construct the final input for the model
+        formatted_prompt = input_prompt.format(text=text, jd=jd)
+        
+        # Get response from Gemini model
+        response = get_gemini_response(formatted_prompt)
+        
+        try:
+            # Parse the response into a structured dictionary
+            response_json = json.loads(response)
+            
+            # Display the results in an attractive format
+            st.subheader("ATS Evaluation Results")
+
+            # JD Match (percentage)
+            st.markdown(f"**JD Match**: {response_json['JD Match']}")
+
+            # Missing Keywords
+            missing_keywords = ", ".join(response_json['MissingKeywords'])
+            st.markdown(f"**Missing Keywords**: {missing_keywords if missing_keywords else 'None'}")
+
+            # Profile Summary
+            st.markdown("**Profile Summary**:")
+            st.text_area("Suggested Profile Summary", value=response_json['Profile Summary'], height=150)
+        
+        except json.JSONDecodeError:
+            st.error("Error processing the response from the model. Please try again.")
+    else:
+        st.warning("Please upload a PDF resume.")
